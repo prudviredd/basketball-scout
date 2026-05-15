@@ -1,62 +1,56 @@
 from flask import Flask, render_template, request, jsonify
 from flask_cors import CORS
 from dotenv import load_dotenv
-from functools import lru_cache
 from difflib import SequenceMatcher
-import os
-import re
-import requests
-from datetime import datetime, date
+import os, re, time, requests
+from datetime import date, datetime
 
 load_dotenv()
-
 app = Flask(__name__)
 CORS(app)
 
 API_KEY = os.getenv("BALLDONTLIE_API_KEY", "").strip()
 BASE_URL = "https://api.balldontlie.io"
+CACHE = {}
 
+CURRENT_SEASON = "2025-26"
+CURRENT_SEASON_YEAR = 2025
+DEFAULT_LAST_N = 6
+
+CORE_STATS = ["pts", "fg3m", "fgm", "fga", "reb", "ast", "stl", "blk", "turnover", "plus_minus"]
+DISPLAY_NAMES = {
+    "pts": "PTS", "reb": "REB", "ast": "AST", "fg3m": "3PM", "stl": "STL", "blk": "BLK",
+    "turnover": "TO", "min": "MIN", "fgm": "FGM", "fga": "FGA", "plus_minus": "+/-"
+}
 STAT_ALIASES = {
-    "three pointers": "fg3m", "3 pointers": "fg3m", "3-pointers": "fg3m", "three-pointers": "fg3m",
-    "threes": "fg3m", "3pm": "fg3m",
-    "field goals": "fgm", "field goal": "fgm", "fgm": "fgm",
-    "field goal attempts": "fga", "fga": "fga",
-    "free throws": "ftm", "ftm": "ftm",
+    "three pointers": "fg3m", "3 pointers": "fg3m", "3-pointers": "fg3m", "threes": "fg3m", "3pm": "fg3m",
+    "field goals": "fgm", "fgm": "fgm", "field goal attempts": "fga", "fga": "fga",
     "points": "pts", "point": "pts", "pts": "pts", "scored": "pts", "score": "pts",
     "rebounds": "reb", "rebound": "reb", "boards": "reb",
     "assists": "ast", "assist": "ast",
-    "steals": "stl", "steal": "stl",
-    "blocks": "blk", "block": "blk",
-    "turnovers": "turnover", "turnover": "turnover",
-    "minutes": "min",
-    "plus minus": "plus_minus", "+/-": "plus_minus", "plus/minus": "plus_minus",
+    "steals": "stl", "blocks": "blk", "turnovers": "turnover",
+    "plus minus": "plus_minus", "+/-": "plus_minus", "plus/minus": "plus_minus"
 }
-
-CORE_STATS = ["pts", "fg3m", "fgm", "fga", "reb", "ast", "stl", "blk", "turnover", "plus_minus"]
-
-DISPLAY_NAMES = {
-    "pts": "PTS", "reb": "REB", "ast": "AST", "fg3m": "3PM",
-    "stl": "STL", "blk": "BLK", "turnover": "TO", "min": "MIN",
-    "fgm": "FGM", "fga": "FGA", "ftm": "FTM", "fta": "FTA",
-    "plus_minus": "+/-",
-}
-
 NAME_FIXES = {
-    "kate cunningham": "cade cunningham",
-    "cad cunningham": "cade cunningham",
-    "cad": "cade cunningham",
-    "cade": "cade cunningham",
-    "cunningham": "cade cunningham",
-    "luca doncic": "luka doncic",
-    "luka": "luka doncic",
-    "joker": "nikola jokic",
-    "jokic": "nikola jokic",
-    "steph curry": "stephen curry",
-    "steph": "stephen curry",
-    "lebron": "lebron james",
-    "aja wilson": "a'ja wilson",
-    "aja": "a'ja wilson",
+    "kate cunningham": "cade cunningham", "cad": "cade cunningham", "cade": "cade cunningham",
+    "cunningham": "cade cunningham", "steph": "stephen curry", "steph curry": "stephen curry",
+    "luka": "luka doncic", "luca doncic": "luka doncic", "joker": "nikola jokic",
+    "jokic": "nikola jokic", "lebron": "lebron james", "aja": "a'ja wilson", "aja wilson": "a'ja wilson",
 }
+
+def cache_get(k):
+    item = CACHE.get(k)
+    if not item:
+        return None
+    exp, val = item
+    if time.time() > exp:
+        CACHE.pop(k, None)
+        return None
+    return val
+
+def cache_set(k, val, sec):
+    CACHE[k] = (time.time() + sec, val)
+    return val
 
 def league_path(league):
     return "/v1" if league == "nba" else f"/{league}/v1"
@@ -64,298 +58,236 @@ def league_path(league):
 def headers():
     return {"Authorization": API_KEY} if API_KEY else {}
 
-def season_to_year(season_value):
-    season_value = str(season_value or "2024").strip()
-    return int(season_value.split("-")[0]) if "-" in season_value else int(season_value)
-
-def normalize_player_name(name):
+def normalize_name(name):
     cleaned = " ".join((name or "").lower().replace("’", "'").split()).strip()
     return NAME_FIXES.get(cleaned, cleaned)
 
-def parse_query(q):
-    ql = (q or "").lower().strip()
-    league = "wnba" if "wnba" in ql else "nba"
+def bdl_get(path, params=None, cache_seconds=0):
+    if not API_KEY:
+        raise RuntimeError("BALLDONTLIE_API_KEY is missing in Render Environment.")
+    params = params or {}
+    key = ("GET", path, tuple(sorted((str(k), str(v)) for k, v in params.items())))
+    if cache_seconds:
+        cached = cache_get(key)
+        if cached is not None:
+            return cached
 
-    last_n = 5
+    r = requests.get(BASE_URL + path, headers=headers(), params=params, timeout=25)
+    if r.status_code == 401:
+        raise RuntimeError("API key rejected. Check Render env variable.")
+    if r.status_code == 403:
+        raise RuntimeError("Endpoint blocked by current BALLDONTLIE plan.")
+    if r.status_code == 429:
+        raise RuntimeError("Rate limit hit. Wait 60 seconds and retry.")
+    if r.status_code >= 400:
+        raise RuntimeError(f"BALLDONTLIE HTTP {r.status_code}: {r.text[:200]}")
+    data = r.json()
+    if cache_seconds:
+        cache_set(key, data, cache_seconds)
+    return data
+
+def full_name(p):
+    return f"{p.get('first_name','')} {p.get('last_name','')}".strip() or "Unknown"
+
+def initials(name):
+    return "".join([x[:1] for x in name.split()[:2]]).upper() or "P"
+
+def team_abbr(t):
+    return (t or {}).get("abbreviation") or (t or {}).get("name") or ""
+
+def team_name(t):
+    return (t or {}).get("full_name") or (t or {}).get("name") or team_abbr(t)
+
+def sim(a,b):
+    return SequenceMatcher(None, a.lower(), b.lower()).ratio()
+
+def extract_name(q):
+    ql = (q or "").lower()
+    remove_words = [
+        "nba","wnba","show","me","how","many","much","did","had","have","in","the","last","games","game",
+        "points","point","pts","scored","score","rebounds","rebound","boards","assists","assist","threes",
+        "three pointers","3 pointers","3-pointers","3pm","steals","blocks","turnovers","minutes",
+        "field goals","field goal","field goal attempts","plus minus","plus/minus","+/-","fgm","fga"
+    ]
+    name = re.sub(r"\b\d+\b", " ", ql)
+    for w in sorted(remove_words, key=len, reverse=True):
+        name = name.replace(w, " ")
+    return normalize_name(" ".join(name.split()).strip() or q)
+
+def parse_query(q):
+    ql = (q or "").lower()
+    last_n = DEFAULT_LAST_N
     m = re.search(r"last\s+(\d+)", ql)
     if m:
         last_n = max(1, min(int(m.group(1)), 25))
-    elif "last four" in ql:
-        last_n = 4
-    elif "last five" in ql:
-        last_n = 5
-    elif "last ten" in ql:
-        last_n = 10
-
-    requested = []
+    stats = []
     for phrase, stat in sorted(STAT_ALIASES.items(), key=lambda x: len(x[0]), reverse=True):
-        if phrase in ql and stat not in requested:
-            requested.append(stat)
+        if phrase in ql and stat not in stats:
+            stats.append(stat)
+    # Betting mode always returns full useful table even if user asks one stat.
+    return {"player": extract_name(q), "last_n": last_n, "stats": CORE_STATS}
 
-    stats = CORE_STATS.copy() if not requested or "last" in ql else requested
+def search_players(league, q):
+    q = normalize_name(q)
+    ck = f"players:{league}:{q}"
+    cached = cache_get(ck)
+    if cached is not None:
+        return cached
 
-    remove_words = [
-        "nba","wnba","show","me","how","many","much","did","had","have","in","the","last",
-        "games","game","made","player","stat","stats","points","point","pts","scored","score",
-        "rebounds","rebound","boards","assists","assist","threes","three pointers","3 pointers",
-        "3-pointers","three-pointers","3pm","steals","steal","blocks","block","turnovers","turnover",
-        "minutes","field goals","field goal","field goal attempts","free throws","plus minus",
-        "plus/minus","+/-","fgm","fga","ftm"
-    ]
-    name_guess = re.sub(r"\b\d+\b", " ", ql)
-    for word in sorted(remove_words, key=len, reverse=True):
-        name_guess = name_guess.replace(word, " ")
-    name_guess = " ".join(name_guess.split()).strip() or q.strip()
-    name_guess = normalize_player_name(name_guess)
+    terms = []
+    if q:
+        terms.append(q)
+    parts = q.split()
+    if parts:
+        terms.append(parts[-1])
+    if len(q) >= 3:
+        terms.append(q[:3])
+    if len(q) >= 4:
+        terms.append(q[:4])
 
-    return {"league": league, "last_n": last_n, "stats": stats, "player": name_guess}
-
-def bdl_get(path, params=None):
-    if not API_KEY:
-        raise RuntimeError("BALLDONTLIE_API_KEY is missing. Add it to .env and restart.")
-    response = requests.get(f"{BASE_URL}{path}", headers=headers(), params=params or {}, timeout=30)
-
-    if response.status_code == 401:
-        raise RuntimeError("API key rejected. Re-copy the key from BALLDONTLIE, update .env, and restart.")
-    if response.status_code == 403:
-        raise RuntimeError("This endpoint may require an upgraded plan for this sport/data.")
-    if response.status_code == 429:
-        raise RuntimeError("Rate limit hit. Wait 60 seconds and retry.")
-    if response.status_code >= 400:
+    seen, players = set(), []
+    for term in dict.fromkeys(terms):
         try:
-            detail = response.json()
+            data = bdl_get(f"{league_path(league)}/players", {"search": term, "per_page": 100}, 3600)
+            for p in data.get("data", []):
+                if p.get("id") not in seen:
+                    seen.add(p.get("id"))
+                    players.append(p)
         except Exception:
-            detail = response.text[:300]
-        raise RuntimeError(f"BALLDONTLIE HTTP {response.status_code}: {detail}")
-    return response.json()
+            pass
+    return cache_set(ck, players, 3600)
 
-def full_name(player):
-    return f"{player.get('first_name','')} {player.get('last_name','')}".strip() or player.get("full_name") or "Unknown"
-
-def team_name(team):
-    return team.get("full_name") or team.get("name") or team.get("abbreviation") or ""
-
-def team_abbr(team):
-    return team.get("abbreviation") or team.get("name") or ""
-
-@lru_cache(maxsize=1024)
-def search_player_cached(league, player_name):
-    path = f"{league_path(league)}/players"
-    player_name = normalize_player_name(player_name)
-    data = bdl_get(path, {"search": player_name, "per_page": 25})
-    players = data.get("data", [])
-    if not players and player_name.split():
-        data = bdl_get(path, {"search": player_name.split()[-1], "per_page": 25})
-        players = data.get("data", [])
-    return players
-
-def similarity(a, b):
-    return SequenceMatcher(None, a.lower(), b.lower()).ratio()
-
-def rank_players(players, query):
-    q = normalize_player_name(query)
-    ranked = []
+def rank_players(players, q):
+    q = normalize_name(q)
+    out = []
     for p in players:
-        name = full_name(p)
-        score = max(similarity(q, name), 0.92 if q in name.lower() else 0)
-        team = p.get("team") or {}
-        ranked.append({
-            "id": p.get("id"),
-            "name": name,
-            "position": p.get("position"),
-            "team": team_name(team),
-            "team_abbr": team_abbr(team),
-            "score": round(score, 3),
+        nm = full_name(p)
+        first = (p.get("first_name") or "")
+        last = (p.get("last_name") or "")
+        score = max(
+            sim(q, nm), sim(q, first), sim(q, last),
+            0.99 if q == nm.lower() else 0,
+            0.96 if q in nm.lower() else 0,
+            0.92 if q in last.lower() else 0
+        )
+        t = p.get("team") or {}
+        out.append({
+            "id": p.get("id"), "name": nm, "initials": initials(nm), "position": p.get("position"),
+            "team": team_name(t), "team_abbr": team_abbr(t), "score": round(score,3)
         })
-    ranked.sort(key=lambda x: x["score"], reverse=True)
-    return ranked
+    return sorted(out, key=lambda x: x["score"], reverse=True)
 
-def best_match(players, query):
-    ranked = rank_players(players, query)
+def best_player(players, q):
+    ranked = rank_players(players, q)
     if not ranked:
         return None
-    best_id = ranked[0]["id"]
-    for p in players:
-        if p.get("id") == best_id:
-            return p
-    return players[0]
+    bid = ranked[0]["id"]
+    return next((p for p in players if p.get("id") == bid), None)
 
-def game_date_value(row):
+def gdate(row):
     raw = (row.get("game") or {}).get("date") or ""
     try:
-        return datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        return datetime.fromisoformat(raw.replace("Z","+00:00"))
     except Exception:
         return datetime.min
 
-def fetch_stats(league, player_id, season_year):
-    path = f"{league_path(league)}/stats"
-    return bdl_get(path, {
-        "player_ids[]": player_id,
-        "seasons[]": season_year,
-        "per_page": 100
-    }).get("data", [])
-
-def get_stat(row, stat):
+def stat_val(row, stat):
     if stat == "plus_minus":
-        return row.get("plus_minus", row.get("plusMinus", row.get("plusminus", row.get("pm", ""))))
+        return row.get("plus_minus", row.get("plusMinus", row.get("pm","")))
     return row.get(stat)
 
-def numeric_value(row, stat):
-    v = get_stat(row, stat)
+def num(row, stat):
     try:
-        if stat == "min" and isinstance(v, str) and ":" in v:
-            m, s = v.split(":")
-            return float(m) + float(s) / 60
-        if v in ("", None):
-            return 0
-        return float(v)
+        return float(stat_val(row,stat) or 0)
     except Exception:
         return 0
 
-def summarize(rows, requested_stats, last_n):
-    rows = sorted(rows, key=game_date_value, reverse=True)
-    rows = [r for r in rows if r.get("game")]
-    selected = rows[:last_n]
-
-    totals, averages, highs = {}, {}, {}
-    for stat in requested_stats:
-        vals = [numeric_value(r, stat) for r in selected]
-        totals[stat] = round(sum(vals), 2)
-        averages[stat] = round(sum(vals) / len(vals), 2) if vals else 0
-        highs[stat] = round(max(vals), 2) if vals else 0
-
+def summarize(rows, stats, last_n):
+    # Only rows from the current season endpoint results are used.
+    rows = sorted([r for r in rows if r.get("game")], key=gdate, reverse=True)[:last_n]
+    totals, avgs, highs = {}, {}, {}
+    for s in stats:
+        vals = [num(r,s) for r in rows]
+        totals[s] = round(sum(vals),2)
+        avgs[s] = round(sum(vals)/len(vals),2) if vals else 0
+        highs[s] = round(max(vals),2) if vals else 0
     games = []
-    for row in selected:
-        game = row.get("game") or {}
-        team = row.get("team") or {}
+    for r in rows:
+        g,t = r.get("game") or {}, r.get("team") or {}
         games.append({
-            "date": (game.get("date") or "")[:10],
-            "status": game.get("status") or "",
-            "team": team_abbr(team),
-            "min": row.get("min"),
-            "pts": row.get("pts"),
-            "reb": row.get("reb"),
-            "ast": row.get("ast"),
-            "fg3m": row.get("fg3m"),
-            "stl": row.get("stl"),
-            "blk": row.get("blk"),
-            "turnover": row.get("turnover"),
-            "fgm": row.get("fgm"),
-            "fga": row.get("fga"),
-            "ftm": row.get("ftm"),
-            "fta": row.get("fta"),
-            "plus_minus": get_stat(row, "plus_minus"),
+            "date": (g.get("date") or "")[:10], "status": g.get("status") or "", "team": team_abbr(t),
+            "min": r.get("min"), "pts": r.get("pts"), "fg3m": r.get("fg3m"), "fgm": r.get("fgm"), "fga": r.get("fga"),
+            "reb": r.get("reb"), "ast": r.get("ast"), "stl": r.get("stl"), "blk": r.get("blk"),
+            "turnover": r.get("turnover"), "plus_minus": stat_val(r,"plus_minus")
         })
-    return games, totals, averages, highs
-
-def quick_links(player_name, league):
-    from urllib.parse import quote_plus
-    q = quote_plus(player_name)
-    return [
-        {"label": "Google News", "url": f"https://news.google.com/search?q={q}+{league}+injury"},
-        {"label": "ESPN Search", "url": f"https://www.espn.com/search/_/q/{q}"},
-        {"label": "X/Twitter live search", "url": f"https://x.com/search?q={q}%20injury%20OR%20questionable%20OR%20probable&src=typed_query&f=live"},
-        {"label": "Rotowire Search", "url": f"https://www.rotowire.com/search.php?query={q}"},
-        {"label": "NBA Injury Report", "url": "https://official.nba.com/nba-injury-report-2025-26-season/"},
-    ]
-
-def parse_game(game):
-    home = game.get("home_team") or {}
-    visitor = game.get("visitor_team") or {}
-    return {
-        "id": game.get("id"),
-        "date": (game.get("date") or "")[:10],
-        "status": game.get("status") or "",
-        "period": game.get("period"),
-        "time": game.get("time"),
-        "home_team": team_name(home),
-        "home_abbr": team_abbr(home),
-        "visitor_team": team_name(visitor),
-        "visitor_abbr": team_abbr(visitor),
-        "home_score": game.get("home_team_score"),
-        "visitor_score": game.get("visitor_team_score"),
-        "postseason": game.get("postseason"),
-    }
+    return games, totals, avgs, highs
 
 @app.route("/")
 def index():
-    return render_template("index.html")
-
-@app.route("/api/health")
-def health():
-    return jsonify({"ok": True, "key_loaded": bool(API_KEY), "nba_path": league_path("nba"), "wnba_path": league_path("wnba")})
+    return render_template("index.html", season=CURRENT_SEASON)
 
 @app.route("/api/suggest")
 def suggest():
-    q = request.args.get("q", "").strip()
-    league = request.args.get("league", "nba").lower().strip()
-    if league not in ("nba", "wnba"):
+    q = request.args.get("q","").strip()
+    league = request.args.get("league","nba").lower()
+    if league not in ("nba","wnba"):
         league = "nba"
-    if len(q) < 2:
+    if len(q) < 3:
         return jsonify({"ok": True, "suggestions": []})
     try:
-        players = search_player_cached(league, q)
-        suggestions = rank_players(players, q)[:8]
-        return jsonify({"ok": True, "suggestions": suggestions})
+        return jsonify({"ok": True, "suggestions": rank_players(search_players(league,q),q)[:10]})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e), "suggestions": []}), 500
 
 @app.route("/api/today")
-def today_games():
-    league = request.args.get("league", "nba").lower().strip()
-    if league not in ("nba", "wnba"):
+def today():
+    league = request.args.get("league","nba").lower()
+    if league not in ("nba","wnba"):
         league = "nba"
     day = request.args.get("date") or date.today().isoformat()
     try:
-        games = bdl_get(f"{league_path(league)}/games", {"dates[]": day, "per_page": 100}).get("data", [])
-        parsed = [parse_game(g) for g in games]
-        return jsonify({"ok": True, "league": league.upper(), "date": day, "games": parsed})
+        data = bdl_get(f"{league_path(league)}/games", {"dates[]": day, "per_page": 100}, 300)
+        games = []
+        for g in data.get("data",[]):
+            h,v = g.get("home_team") or {}, g.get("visitor_team") or {}
+            games.append({
+                "date": (g.get("date") or "")[:10], "status": g.get("status") or "",
+                "home_abbr": team_abbr(h), "visitor_abbr": team_abbr(v),
+                "home_score": g.get("home_team_score"), "visitor_score": g.get("visitor_team_score")
+            })
+        return jsonify({"ok": True, "league": league.upper(), "date": day, "games": games})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e), "league": league.upper(), "date": day, "games": []}), 500
 
 @app.route("/api/ask")
 def ask():
-    q = request.args.get("q", "")
-    selected_league = request.args.get("league", "").lower().strip()
-    season = request.args.get("season", "2024-25")
+    q = request.args.get("q","")
+    league = request.args.get("league","nba").lower()
+    if league not in ("nba","wnba"):
+        league = "nba"
     parsed = parse_query(q)
-    if selected_league in ("nba", "wnba"):
-        parsed["league"] = selected_league
-
-    league = parsed["league"]
     try:
-        players = search_player_cached(league, parsed["player"])
-        player = best_match(players, parsed["player"])
+        players = search_players(league, parsed["player"])
+        player = best_player(players, parsed["player"])
         if not player:
-            raise RuntimeError(f"No player found for '{parsed['player']}'.")
-
-        player_name = full_name(player)
-        rows = fetch_stats(league, player["id"], season_to_year(season))
+            raise RuntimeError(f"No player found for '{parsed['player']}'. Try first and last name.")
+        rows = bdl_get(
+            f"{league_path(league)}/stats",
+            {"player_ids[]": player["id"], "seasons[]": CURRENT_SEASON_YEAR, "per_page": 100},
+            240
+        ).get("data",[])
         if not rows:
-            raise RuntimeError(f"No stats found for {player_name}. Try another season or check your API tier.")
-
-        games, totals, averages, highs = summarize(rows, parsed["stats"], parsed["last_n"])
-        if not games:
-            raise RuntimeError(f"Stats found, but no game rows were usable for {player_name}.")
-
+            raise RuntimeError(f"No {CURRENT_SEASON} stats found for {full_name(player)}.")
+        games, totals, avgs, highs = summarize(rows, parsed["stats"], parsed["last_n"])
+        nm = full_name(player)
         return jsonify({
-            "ok": True,
-            "source": "BALLDONTLIE",
-            "league": league.upper(),
-            "season": season,
-            "player": {"id": player["id"], "name": player_name, "position": player.get("position"), "team": player.get("team")},
-            "last_n": parsed["last_n"],
-            "stats": parsed["stats"],
-            "display_names": DISPLAY_NAMES,
-            "games": games,
-            "totals": totals,
-            "averages": averages,
-            "highs": highs,
-            "last_game": games[0] if games else {},
-            "links": quick_links(player_name, league)
+            "ok": True, "source": "BALLDONTLIE", "league": league.upper(), "season": CURRENT_SEASON,
+            "player": {"id": player["id"], "name": nm, "initials": initials(nm), "position": player.get("position")},
+            "last_n": parsed["last_n"], "stats": parsed["stats"], "display_names": DISPLAY_NAMES,
+            "games": games, "totals": totals, "averages": avgs, "highs": highs, "last_game": games[0] if games else {}
         })
     except Exception as e:
-        return jsonify({"ok": False, "error": str(e), "parsed": parsed, "links": quick_links(parsed["player"], league)}), 500
+        return jsonify({"ok": False, "error": str(e), "parsed": parsed}), 500
 
 if __name__ == "__main__":
-    app.run(host="127.0.0.1", port=5050, debug=True)
+    app.run(host="0.0.0.0", port=int(os.getenv("PORT","5050")), debug=False)

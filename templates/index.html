@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <title>Basketball Scout V4.4</title>
+  <title>Basketball Scout V4.5</title>
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <link rel="stylesheet" href="/static/style.css">
@@ -10,9 +10,9 @@
 <body>
 <main class="app">
   <header class="top">
-    <div class="tag">🏀 Mobile Betting Scout</div>
-    <h1>Basketball Scout V4.4</h1>
-    <p>Last 6 games · 2025–26 only · NBA/WNBA fallback search</p>
+    <div class="tag">🏀 Betting Command Center</div>
+    <h1>Basketball Scout V4.5</h1>
+    <p>Last 6 games · PTS/REB/AST/3PM/STL/BLK · NBA/WNBA</p>
   </header>
 
   <section class="stickySearch">
@@ -25,22 +25,34 @@
     </div>
     <div class="searchRow">
       <div class="inputWrap">
-        <input id="query" value="Cade Cunningham last 6 games" placeholder="cad, cait, clark, jen, tobias..." autocomplete="off">
+        <input id="query" value="Cade Cunningham last 6 games" placeholder="cad, cait, wemby, steph..." autocomplete="off">
         <div id="suggestions" class="suggestions hidden"></div>
       </div>
-      <button id="search">Go</button>
       <button id="voice">🎤</button>
     </div>
   </section>
 
   <section class="chips">
-    <button class="ex">Caitlin Clark last 6 games</button>
     <button class="ex">Cade Cunningham last 6 games</button>
+    <button class="ex">Caitlin Clark last 6 games</button>
     <button class="ex">Tobias Harris last 6 games</button>
-    <button class="ex">Jenkins last 6 games</button>
+    <button class="ex">Wemby last 6 games</button>
   </section>
 
   <div id="status" class="status"></div>
+
+  <section class="card games">
+    <h2>Game-first player shortcuts</h2>
+    <p>Load yesterday/today/tomorrow games, then tap a player chip for quick stats.</p>
+    <div class="gameBtns">
+      <button id="loadNba">Load NBA 3-Day Games</button>
+      <button id="loadWnba">Load WNBA 3-Day Games</button>
+    </div>
+    <div id="gamesMeta" class="gamesMeta">Not loaded yet</div>
+    <div id="gamesBoard"></div>
+    <h3 id="chipTitle" class="hidden">Likely player chips</h3>
+    <div id="gamePlayerChips" class="playerChips"></div>
+  </section>
 
   <section id="results" class="card results hidden">
     <div class="playerHead">
@@ -54,6 +66,9 @@
     <h3>Last Game</h3>
     <div id="lastGame" class="statGrid"></div>
 
+    <h3>Betting Snapshot</h3>
+    <div id="hitCards" class="hitGrid"></div>
+
     <h3>Last 6 Summary</h3>
     <div id="summary" class="statGrid"></div>
 
@@ -64,19 +79,8 @@
     <div class="tableWrap"><table id="table"><thead></thead><tbody></tbody></table></div>
   </section>
 
-  <section class="card games">
-    <h2>Yesterday · Today · Tomorrow</h2>
-    <p>Load only when needed to avoid wasting API calls.</p>
-    <div class="gameBtns">
-      <button id="loadNba">Load NBA 3-Day Games</button>
-      <button id="loadWnba">Load WNBA 3-Day Games</button>
-    </div>
-    <div id="gamesMeta" class="gamesMeta">Not loaded yet</div>
-    <div id="gamesBoard"></div>
-  </section>
-
   <section class="card tools">
-    <h2>One-Tap News</h2>
+    <h2>One-Tap News / Chatter</h2>
     <div class="toolGrid">
       <button id="xNba">X/Twitter NBA chatter</button>
       <button id="xWnba">X/Twitter WNBA chatter</button>
@@ -86,7 +90,28 @@
       <button id="espn">ESPN search</button>
     </div>
   </section>
+
+  <section class="card tracker">
+    <h2>Group Stake Tracker</h2>
+    <p>Local on each phone for now. Shared sync can come later.</p>
+    <div class="stakeGrid">
+      <input class="friend" value="Me"><input class="stake" type="number" min="0" placeholder="$">
+      <input class="friend" value="Friend 1"><input class="stake" type="number" min="0" placeholder="$">
+      <input class="friend" value="Friend 2"><input class="stake" type="number" min="0" placeholder="$">
+      <input class="friend" value="Friend 3"><input class="stake" type="number" min="0" placeholder="$">
+    </div>
+    <button id="saveStakes">Save Stakes</button>
+    <div id="stakeTotal" class="stakeTotal">$0 total today</div>
+  </section>
 </main>
+
+<nav class="bottomNav">
+  <a href="#query">Search</a>
+  <a href=".games">Games</a>
+  <a href=".results">Stats</a>
+  <a href=".tools">News</a>
+</nav>
+
 <script src="/static/app.js"></script>
 </body>
 </html>

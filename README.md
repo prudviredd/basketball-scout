@@ -1,12 +1,3 @@
-# Basketball Scout V4.4
+# Basketball Scout V4.5
 
-Mobile-first betting scout.
-
-Highlights:
-- 3-day games: yesterday, today, tomorrow
-- NBA/WNBA search fallback
-- Caitlin Clark quick search support
-- first-name/last-name/partial matching
-- last 6 games, current season only
-- stronger caching and API cooldown guard
-- one-tap X/Twitter/news/injury links
+General betting scout: PTS, REB, AST, 3PM/3PA, STL, BLK, last 6 games, mobile-first.

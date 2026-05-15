@@ -2,6 +2,7 @@ let chart, timer; const $=id=>document.getElementById(id);
 const fmt=v=>(v===null||v===undefined||v==="")?"-":v;
 function status(m){$("status").textContent=m||""}
 function hideSug(){$("suggestions").classList.add("hidden")}
+function seq(values){return (values||[]).map(v=>Number(v).toString().replace(".0","")).join(" · ")}
 
 async function suggest(){
   const raw=$("query").value.trim();
@@ -14,9 +15,8 @@ async function suggest(){
     $("suggestions").innerHTML=d.suggestions.map(s=>`<div class="suggestion" data-name="${s.name}" data-league="${s.league||$("league").value}"><div class="miniAvatar">${s.initials||"P"}</div><div><b>${s.name}</b><small>${(s.league||"").toUpperCase()} ${s.team_abbr||""} ${s.source==="local"?"· quick":""}</small></div></div>`).join("");
     $("suggestions").classList.remove("hidden");
     document.querySelectorAll(".suggestion").forEach(el=>el.onclick=()=>{
-      const tail=$("query").value.match(/\blast\s+\d+.*$/i);
       $("league").value = el.dataset.league === "wnba" ? "wnba" : "nba";
-      $("query").value = tail ? `${el.dataset.name} ${tail[0]}` : `${el.dataset.name} last 6 games`;
+      $("query").value = `${el.dataset.name} last 6 games`;
       hideSug(); search();
     });
   }catch(e){hideSug()}
@@ -24,13 +24,14 @@ async function suggest(){
 
 async function search(){
   const q=$("query").value.trim(); if(!q)return;
-  hideSug(); status("Fetching last 6 games...");
+  hideSug(); status("Fetching last 6 betting stats...");
   $("results").classList.add("hidden");
   try{
     const r=await fetch(`/api/ask?league=${$("league").value}&q=${encodeURIComponent(q)}`);
     const d=await r.json();
     if(!d.ok){status(d.error);return}
     render(d); status("");
+    document.getElementById("results").scrollIntoView({behavior:"smooth", block:"start"});
   }catch(e){status("Error: "+e.message)}
 }
 
@@ -40,15 +41,16 @@ function render(d){
   $("avatar").textContent=d.player.initials||"P";
   $("meta").textContent=`${d.league} · ${d.season} · Last ${d.last_n} games`;
   const lg=d.last_game||{};
-  const lastStats=["pts","reb","ast","fg3m","fgm","fga","plus_minus","min"];
+  const lastStats=["pts","reb","ast","fg3m","fg3a","stl","blk","min"];
   $("lastGame").innerHTML=lastStats.map(s=>`<div class="stat"><strong>${fmt(lg[s])}</strong><span>${d.display_names[s]||s}</span></div>`).join("");
-  const summary=["pts","reb","ast","fg3m","stl","blk","turnover","plus_minus"];
-  $("summary").innerHTML=summary.map(s=>`<div class="stat"><strong>${fmt(d.averages[s])}</strong><span>${d.display_names[s]||s} avg · high ${fmt(d.highs[s])}</span></div>`).join("");
+  $("hitCards").innerHTML=(d.hit_cards||[]).map(h=>`<div class="hit ${(h.pct||0)>=60?"good":((h.pct||0)<=33?"bad":"")}"><strong>${h.hits}/${h.total}</strong><span>${h.label}</span><div class="seq">${h.pct}% hit</div></div>`).join("");
+  const summary=["pts","reb","ast","fg3m","fg3a","stl","blk"];
+  $("summary").innerHTML=summary.map(s=>`<div class="stat"><strong>${fmt(d.averages[s])}</strong><span>${d.display_names[s]||s} avg · high ${fmt(d.highs[s])}</span><div class="seq">${seq(d.sequences[s])}</div></div>`).join("");
   const labels=d.games.map(g=>g.date).reverse();
-  const chartStats=["pts","reb","ast","fg3m"];
+  const chartStats=["pts","reb","ast","fg3m","stl","blk"];
   if(chart)chart.destroy();
   chart=new Chart($("chart"),{type:"line",data:{labels,datasets:chartStats.map(s=>({label:d.display_names[s]||s,data:d.games.map(g=>Number(g[s]||0)).reverse(),tension:.25}))},options:{plugins:{legend:{position:"bottom"}},scales:{y:{beginAtZero:true}}}});
-  const cols=["date","team","min","pts","reb","ast","fg3m","fgm","fga","stl","blk","turnover","plus_minus"];
+  const cols=d.table_stats;
   $("table").querySelector("thead").innerHTML=`<tr>${cols.map(c=>`<th>${d.display_names[c]||c}</th>`).join("")}</tr>`;
   $("table").querySelector("tbody").innerHTML=d.games.map(g=>`<tr>${cols.map(c=>`<td>${fmt(g[c])}</td>`).join("")}</tr>`).join("");
 }
@@ -62,12 +64,32 @@ async function loadGames(league){
     if(!d.ok)return;
     if(!d.games.length){$("gamesBoard").innerHTML=`<div class="gameCard">No games found.</div>`;return}
     $("gamesBoard").innerHTML=d.games.map(g=>`<div class="gameCard"><div class="gameTop"><span>${g.date}</span><span>${g.status||"scheduled"}</span></div><div class="team"><span>${g.visitor_abbr}</span><span>${fmt(g.visitor_score)}</span></div><div class="team"><span>${g.home_abbr}</span><span>${fmt(g.home_score)}</span></div></div>`).join("");
+    $("chipTitle").classList.remove("hidden");
+    $("gamePlayerChips").innerHTML=(d.chips||[]).map(c=>`<button class="playerChip" data-league="${c.league}" data-name="${c.name}">${c.initials} · ${c.name}</button>`).join("");
+    document.querySelectorAll(".playerChip").forEach(b=>b.onclick=()=>{$("league").value=b.dataset.league;$("query").value=`${b.dataset.name} last 6 games`;search()});
   }catch(e){$("gamesMeta").textContent=e.message}
+}
+
+function saveStakes(){
+  const friends=[...document.querySelectorAll(".friend")].map(x=>x.value);
+  const stakes=[...document.querySelectorAll(".stake")].map(x=>Number(x.value||0));
+  localStorage.setItem("stakes_v45", JSON.stringify({friends,stakes}));
+  updateStakeTotal();
+}
+function loadStakes(){
+  const saved=JSON.parse(localStorage.getItem("stakes_v45")||"null");
+  if(!saved)return;
+  document.querySelectorAll(".friend").forEach((x,i)=>x.value=saved.friends[i]||x.value);
+  document.querySelectorAll(".stake").forEach((x,i)=>x.value=saved.stakes[i]||"");
+  updateStakeTotal();
+}
+function updateStakeTotal(){
+  const total=[...document.querySelectorAll(".stake")].reduce((a,x)=>a+Number(x.value||0),0);
+  $("stakeTotal").textContent=`$${total.toFixed(2)} total today`;
 }
 
 $("query").addEventListener("input",()=>{clearTimeout(timer);timer=setTimeout(suggest,500)});
 $("query").addEventListener("keydown",e=>{if(e.key==="Enter")search()});
-$("search").onclick=search;
 document.querySelectorAll(".ex").forEach(b=>b.onclick=()=>{$("query").value=b.textContent;suggest()});
 $("loadNba").onclick=()=>loadGames("nba");
 $("loadWnba").onclick=()=>loadGames("wnba");
@@ -78,3 +100,6 @@ $("injury").onclick=()=>window.open("https://official.nba.com/nba-injury-report-
 $("rotowire").onclick=()=>window.open("https://www.rotowire.com/basketball/nba-lineups.php","_blank");
 $("google").onclick=()=>window.open("https://news.google.com/search?q=NBA%20WNBA%20injury%20props","_blank");
 $("espn").onclick=()=>window.open("https://www.espn.com/search/_/q/nba%20wnba%20injury","_blank");
+$("saveStakes").onclick=saveStakes;
+document.querySelectorAll(".stake").forEach(x=>x.addEventListener("input",updateStakeTotal));
+loadStakes();

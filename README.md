@@ -1,3 +1,3 @@
-# Basketball Scout V4.5
+# BetBoard V5.1
 
-General betting scout: PTS, REB, AST, 3PM/3PA, STL, BLK, last 6 games, mobile-first.
+Removed group stake tracker. Added recent searches. Keeps cache-first behavior and BetBoard branding.

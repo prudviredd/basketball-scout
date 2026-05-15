@@ -7,12 +7,12 @@ function seq(values){return (values||[]).map(v=>Number(v).toString().replace(".0
 async function suggest(){
   const raw=$("query").value.trim();
   const name=raw.replace(/\blast\s+\d+.*$/i,"").trim();
-  if(name.length<3){hideSug();return}
+  if(name.length<2){hideSug();return}
   try{
     const r=await fetch(`/api/suggest?league=${$("league").value}&q=${encodeURIComponent(name)}`);
     const d=await r.json();
     if(!d.suggestions||!d.suggestions.length){hideSug();return}
-    $("suggestions").innerHTML=d.suggestions.map(s=>`<div class="suggestion" data-name="${s.name}" data-league="${s.league||$("league").value}"><div class="miniAvatar">${s.initials||"P"}</div><div><b>${s.name}</b><small>${(s.league||"").toUpperCase()} ${s.team_abbr||""} ${s.source==="local"?"· quick":""}</small></div></div>`).join("");
+    $("suggestions").innerHTML=d.suggestions.map(s=>`<div class="suggestion" data-name="${s.name}" data-league="${s.league||$("league").value}"><div class="miniAvatar">${s.initials||"P"}</div><div><b>${s.name}</b><small>${(s.league||"").toUpperCase()} ${s.team_abbr||""} ${s.source==="quick"?"· quick":""}</small></div></div>`).join("");
     $("suggestions").classList.remove("hidden");
     document.querySelectorAll(".suggestion").forEach(el=>el.onclick=()=>{
       $("league").value = el.dataset.league === "wnba" ? "wnba" : "nba";
@@ -36,6 +36,7 @@ async function search(){
 }
 
 function render(d){
+  saveRecentSearch(d.player.name);
   $("results").classList.remove("hidden");
   $("playerName").textContent=d.player.name;
   $("avatar").textContent=d.player.initials||"P";
@@ -70,25 +71,31 @@ async function loadGames(league){
   }catch(e){$("gamesMeta").textContent=e.message}
 }
 
-function saveStakes(){
-  const friends=[...document.querySelectorAll(".friend")].map(x=>x.value);
-  const stakes=[...document.querySelectorAll(".stake")].map(x=>Number(x.value||0));
-  localStorage.setItem("stakes_v45", JSON.stringify({friends,stakes}));
-  updateStakeTotal();
+function saveRecentSearch(name){
+  const clean = (name || "").replace(/\s+last\s+\d+\s+games/i, "").trim();
+  if(!clean) return;
+  let recent = JSON.parse(localStorage.getItem("recent_v51") || "[]");
+  recent = [clean, ...recent.filter(x => x.toLowerCase() !== clean.toLowerCase())].slice(0, 8);
+  localStorage.setItem("recent_v51", JSON.stringify(recent));
+  renderRecentSearches();
 }
-function loadStakes(){
-  const saved=JSON.parse(localStorage.getItem("stakes_v45")||"null");
-  if(!saved)return;
-  document.querySelectorAll(".friend").forEach((x,i)=>x.value=saved.friends[i]||x.value);
-  document.querySelectorAll(".stake").forEach((x,i)=>x.value=saved.stakes[i]||"");
-  updateStakeTotal();
-}
-function updateStakeTotal(){
-  const total=[...document.querySelectorAll(".stake")].reduce((a,x)=>a+Number(x.value||0),0);
-  $("stakeTotal").textContent=`$${total.toFixed(2)} total today`;
+function renderRecentSearches(){
+  const box = $("recentSearches");
+  if(!box) return;
+  const recent = JSON.parse(localStorage.getItem("recent_v51") || "[]");
+  if(!recent.length){
+    box.innerHTML = `<button class="recentChip" data-name="Cade Cunningham">Cade Cunningham</button><button class="recentChip" data-name="Caitlin Clark">Caitlin Clark</button>`;
+  } else {
+    box.innerHTML = recent.map(n => `<button class="recentChip" data-name="${n}">${n}</button>`).join("");
+  }
+  document.querySelectorAll(".recentChip").forEach(b => b.onclick = () => {
+    $("query").value = `${b.dataset.name} last 6 games`;
+    search();
+  });
 }
 
-$("query").addEventListener("input",()=>{clearTimeout(timer);timer=setTimeout(suggest,500)});
+
+$("query").addEventListener("input",()=>{clearTimeout(timer);timer=setTimeout(suggest,450)});
 $("query").addEventListener("keydown",e=>{if(e.key==="Enter")search()});
 document.querySelectorAll(".ex").forEach(b=>b.onclick=()=>{$("query").value=b.textContent;suggest()});
 $("loadNba").onclick=()=>loadGames("nba");
@@ -100,6 +107,4 @@ $("injury").onclick=()=>window.open("https://official.nba.com/nba-injury-report-
 $("rotowire").onclick=()=>window.open("https://www.rotowire.com/basketball/nba-lineups.php","_blank");
 $("google").onclick=()=>window.open("https://news.google.com/search?q=NBA%20WNBA%20injury%20props","_blank");
 $("espn").onclick=()=>window.open("https://www.espn.com/search/_/q/nba%20wnba%20injury","_blank");
-$("saveStakes").onclick=saveStakes;
-document.querySelectorAll(".stake").forEach(x=>x.addEventListener("input",updateStakeTotal));
-loadStakes();
+renderRecentSearches();

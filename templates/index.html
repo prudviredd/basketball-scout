@@ -2,101 +2,89 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <title>Basketball Betting Scout V4.3</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Basketball Scout V4.4</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-<main class="shell">
-  <header class="hero">
-    <div>
-      <div class="eyebrow">🏀 Betting Scout Mode</div>
-      <h1>Basketball Scout V4.3</h1>
-      <p>Fast player lookup for last 6 games · Current season only · NBA/WNBA ready</p>
-    </div>
-    <div class="heroBall">🏀</div>
+<main class="app">
+  <header class="top">
+    <div class="tag">🏀 Mobile Betting Scout</div>
+    <h1>Basketball Scout V4.4</h1>
+    <p>Last 6 games · 2025–26 only · NBA/WNBA fallback search</p>
   </header>
 
-  <section class="grid">
-    <aside class="panel leftPanel">
-      <div class="panelTitle">Quick Tools</div>
-      <button class="tool" id="injuryNba">NBA Injury Report</button>
-      <button class="tool" id="googleNews">Google News</button>
-      <button class="tool" id="espnSearch">ESPN Search</button>
-      <button class="tool" id="rotowire">Rotowire Search</button>
-      <div class="noteBox">
-        <b>Betting workflow</b>
-        <p>Search player → check last 6 game table → compare PTS / REB / AST / 3PM / +/-.</p>
+  <section class="stickySearch">
+    <div class="row">
+      <select id="league">
+        <option value="nba">NBA first</option>
+        <option value="wnba">WNBA first</option>
+      </select>
+      <select disabled><option>2025-26</option></select>
+    </div>
+    <div class="searchRow">
+      <div class="inputWrap">
+        <input id="query" value="Cade Cunningham last 6 games" placeholder="cad, cait, clark, jen, tobias..." autocomplete="off">
+        <div id="suggestions" class="suggestions hidden"></div>
       </div>
-    </aside>
+      <button id="search">Go</button>
+      <button id="voice">🎤</button>
+    </div>
+  </section>
 
-    <section class="mainPanel">
-      <div class="card controls">
-        <label>League</label>
-        <select id="league">
-          <option value="nba">NBA</option>
-          <option value="wnba">WNBA</option>
-        </select>
-        <label>Season</label>
-        <select id="season" disabled>
-          <option selected>2025-26</option>
-        </select>
+  <section class="chips">
+    <button class="ex">Caitlin Clark last 6 games</button>
+    <button class="ex">Cade Cunningham last 6 games</button>
+    <button class="ex">Tobias Harris last 6 games</button>
+    <button class="ex">Jenkins last 6 games</button>
+  </section>
+
+  <div id="status" class="status"></div>
+
+  <section id="results" class="card results hidden">
+    <div class="playerHead">
+      <div id="avatar" class="avatar">P</div>
+      <div>
+        <h2 id="playerName"></h2>
+        <p id="meta"></p>
       </div>
+    </div>
 
-      <div class="card searchCard">
-        <div class="searchRow">
-          <div class="inputWrap">
-            <input id="query" autocomplete="off" value="Tobias Harris last 6 games" placeholder="Type 3 letters: cad, steph, jen, tobias..." />
-            <div id="suggestions" class="suggestions hidden"></div>
-          </div>
-          <button id="search">Search</button>
-          <button id="voice">🎤</button>
-        </div>
-        <div class="hint">
-          <button class="ex">Cade Cunningham last 6 games</button>
-          <button class="ex">Tobias Harris last 6 games</button>
-          <button class="ex">Jenkins last 6 games</button>
-          <button class="ex">Stephen Curry last 6 games threes</button>
-        </div>
-      </div>
+    <h3>Last Game</h3>
+    <div id="lastGame" class="statGrid"></div>
 
-      <div id="status" class="status"></div>
+    <h3>Last 6 Summary</h3>
+    <div id="summary" class="statGrid"></div>
 
-      <section id="results" class="card resultCard hidden">
-        <div class="resultHeader">
-          <div class="avatar" id="avatar">P</div>
-          <div>
-            <h2 id="playerName"></h2>
-            <p id="meta"></p>
-          </div>
-          <span class="pill">Current Season</span>
-        </div>
+    <h3>Trend</h3>
+    <div class="chartBox"><canvas id="chart"></canvas></div>
 
-        <h3>Last Game Snapshot</h3>
-        <div id="lastGame" class="lastGame"></div>
+    <h3>Exact Game Log</h3>
+    <div class="tableWrap"><table id="table"><thead></thead><tbody></tbody></table></div>
+  </section>
 
-        <h3>Last 6 Betting Summary</h3>
-        <div id="summary" class="summary"></div>
+  <section class="card games">
+    <h2>Yesterday · Today · Tomorrow</h2>
+    <p>Load only when needed to avoid wasting API calls.</p>
+    <div class="gameBtns">
+      <button id="loadNba">Load NBA 3-Day Games</button>
+      <button id="loadWnba">Load WNBA 3-Day Games</button>
+    </div>
+    <div id="gamesMeta" class="gamesMeta">Not loaded yet</div>
+    <div id="gamesBoard"></div>
+  </section>
 
-        <h3>Trend Chart</h3>
-        <div class="chartBox"><canvas id="chart"></canvas></div>
-
-        <h3>Exact Game Log</h3>
-        <div class="tableWrap"><table id="table"><thead></thead><tbody></tbody></table></div>
-      </section>
-    </section>
-
-    <aside class="panel rightPanel">
-      <div class="panelTitle">Today’s Games</div>
-      <div class="gameButtons">
-        <button id="loadNba">Load NBA</button>
-        <button id="loadWnba">Load WNBA</button>
-      </div>
-      <p class="small">Games are loaded only when you click, so we don’t waste API calls before tip-off.</p>
-      <div id="todayMeta" class="todayMeta">Not loaded yet</div>
-      <div id="gamesBoard" class="gamesBoard"></div>
-    </aside>
+  <section class="card tools">
+    <h2>One-Tap News</h2>
+    <div class="toolGrid">
+      <button id="xNba">X/Twitter NBA chatter</button>
+      <button id="xWnba">X/Twitter WNBA chatter</button>
+      <button id="injury">NBA Injury Report</button>
+      <button id="rotowire">Rotowire lineups</button>
+      <button id="google">Google latest news</button>
+      <button id="espn">ESPN search</button>
+    </div>
   </section>
 </main>
 <script src="/static/app.js"></script>

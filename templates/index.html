@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Basketball Scout V4.1</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <main class="app">
+    <section class="hero">
+      <div>
+        <div class="eyebrow">🏀 Private Playoff Scout</div>
+        <h1>Basketball Scout V4.1</h1>
+        <p>Type partial names like <b>cad</b>, <b>steph</b>, or use voice: <b>“Cade Cunningham last 5 games”</b></p>
+      </div>
+      <span class="pill">API-powered</span>
+    </section>
+
+    <section class="scoreboard">
+      <div class="miniCard glow">
+        <span>Today’s Games</span>
+        <strong id="todayTitle">Loading...</strong>
+        <small>Live/scheduled games from API</small>
+      </div>
+      <div class="miniCard">
+        <span>Search Mode</span>
+        <strong>Exact game log</strong>
+        <small>PTS · 3PM · FGM/FGA · REB · AST · +/-</small>
+      </div>
+      <div class="miniCard">
+        <span>Voice Ready</span>
+        <strong>Speak player + last games</strong>
+        <small>Chrome/Edge recommended</small>
+      </div>
+    </section>
+
+    <section id="gamesBoard" class="gamesBoard"></section>
+
+    <section class="card controls">
+      <label>League</label>
+      <select id="league"><option value="nba">NBA</option><option value="wnba">WNBA</option></select>
+      <label>Season</label>
+      <select id="season"><option value="2025-26" selected>2025-26</option><option value="2024-25">2024-25</option><option value="2023-24">2023-24</option></select>
+    </section>
+
+    <section class="card searchCard">
+      <div class="searchRow">
+        <div class="inputWrap">
+          <input id="query" autocomplete="off" value="Cade Cunningham last 5 games" />
+          <div id="suggestions" class="suggestions hidden"></div>
+        </div>
+        <button id="search">Search</button>
+        <button id="voice">🎤 Voice</button>
+      </div>
+      <div class="hint">
+        <button class="ex">cad</button>
+        <button class="ex">Cade Cunningham last 5 games</button>
+        <button class="ex">Stephen Curry last 5 games threes points</button>
+        <button class="ex">LeBron James last 4 games points rebounds assists</button>
+        <button class="ex">A'ja Wilson WNBA last 5 games points rebounds</button>
+      </div>
+    </section>
+
+    <section id="status" class="status"></section>
+
+    <section id="results" class="card resultCard hidden">
+      <div class="resultHeader">
+        <div>
+          <h2 id="playerName"></h2>
+          <p id="meta"></p>
+        </div>
+        <span class="pill small">BALLDONTLIE</span>
+      </div>
+
+      <h3>Last Game Snapshot</h3>
+      <div id="lastGame" class="lastGame"></div>
+
+      <h3>Quick Summary</h3>
+      <div id="summary" class="summary"></div>
+
+      <h3>Trend Chart</h3>
+      <div class="chartBox"><canvas id="chart"></canvas></div>
+
+      <h3>Exact Game-by-Game Log</h3>
+      <div class="tableWrap"><table id="table"><thead></thead><tbody></tbody></table></div>
+    </section>
+
+    <section id="linksCard" class="card hidden">
+      <h3>Injury / news quick links</h3>
+      <div id="links" class="linkGrid"></div>
+    </section>
+  </main>
+  <script src="/static/app.js"></script>
+</body>
+</html>

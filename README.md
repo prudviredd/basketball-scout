@@ -1,3 +1,3 @@
-# BetBoard V5.1
+# BetBoard V5.2
 
-Removed group stake tracker. Added recent searches. Keeps cache-first behavior and BetBoard branding.
+Adds 45-player active playoff priority pool, easier player chips, and cleaner API-busy messaging.

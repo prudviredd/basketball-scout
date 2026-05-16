@@ -71,6 +71,26 @@ async function loadGames(league){
   }catch(e){$("gamesMeta").textContent=e.message}
 }
 
+
+async function loadPriority(){
+  const box = $("priorityChips");
+  if(!box) return;
+  box.innerHTML = `<span class="loadingText">Loading priority players...</span>`;
+  try{
+    const r = await fetch(`/api/priority?league=nba`);
+    const d = await r.json();
+    if(!d.ok){ box.innerHTML = "Could not load player pool."; return; }
+    box.innerHTML = d.players.map(p => `<button class="priorityChip" data-league="${p.league}" data-name="${p.name}">${p.initials} · ${p.name}</button>`).join("");
+    document.querySelectorAll(".priorityChip").forEach(b => b.onclick = () => {
+      $("league").value = b.dataset.league === "wnba" ? "wnba" : "nba";
+      $("query").value = `${b.dataset.name} last 6 games`;
+      search();
+    });
+  }catch(e){
+    box.innerHTML = e.message;
+  }
+}
+
 function saveRecentSearch(name){
   const clean = (name || "").replace(/\s+last\s+\d+\s+games/i, "").trim();
   if(!clean) return;
@@ -78,6 +98,7 @@ function saveRecentSearch(name){
   recent = [clean, ...recent.filter(x => x.toLowerCase() !== clean.toLowerCase())].slice(0, 8);
   localStorage.setItem("recent_v51", JSON.stringify(recent));
   renderRecentSearches();
+if($("loadPriority")) $("loadPriority").onclick=loadPriority;
 }
 function renderRecentSearches(){
   const box = $("recentSearches");
@@ -108,3 +129,4 @@ $("rotowire").onclick=()=>window.open("https://www.rotowire.com/basketball/nba-l
 $("google").onclick=()=>window.open("https://news.google.com/search?q=NBA%20WNBA%20injury%20props","_blank");
 $("espn").onclick=()=>window.open("https://www.espn.com/search/_/q/nba%20wnba%20injury","_blank");
 renderRecentSearches();
+if($("loadPriority")) $("loadPriority").onclick=loadPriority;

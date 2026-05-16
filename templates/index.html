@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <title>BetBoard V5.1</title>
+  <title>BetBoard V5.2</title>
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <link rel="stylesheet" href="/static/style.css">
@@ -10,9 +10,9 @@
 <body>
 <main class="app">
   <header class="top">
-    <div class="tag">🏀 NBA/WNBA Betting Command Center <span>v5.1 beta</span></div>
+    <div class="tag">🏀 NBA/WNBA Betting Command Center <span>v5.2 beta</span></div>
     <h1>BETBOARD</h1>
-    <p>Last 6 games · PTS/REB/AST/3PM/STL/BLK · mobile-first</p>
+    <p>Last 6 games · active playoff pool · PTS/REB/AST/3PM/STL/BLK</p>
   </header>
 
   <section class="stickySearch">
@@ -34,6 +34,15 @@
     <button class="ex">Caitlin Clark last 6 games</button>
     <button class="ex">Tobias Harris last 6 games</button>
     <button class="ex">Wemby last 6 games</button>
+  </section>
+
+  <section class="card priority">
+    <h2>Priority Player Pool</h2>
+    <p>45 active playoff players. Tap a chip instead of searching manually.</p>
+    <div class="priorityActions">
+      <button id="loadPriority">Show Priority Players</button>
+    </div>
+    <div id="priorityChips" class="priorityChips"></div>
   </section>
 
   <div id="status" class="status"></div>

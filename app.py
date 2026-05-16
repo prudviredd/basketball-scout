@@ -35,19 +35,69 @@ NAME_FIXES = {
     "sga": "shai gilgeous-alexander", "kat": "karl-anthony towns",
     "aja": "a'ja wilson", "aja wilson": "a'ja wilson",
     "cait": "caitlin clark", "caitlin": "caitlin clark", "clar": "caitlin clark", "clark": "caitlin clark",
-    "jen": "daniss jenkins", "jenkins": "daniss jenkins", "dennis jenkins": "daniss jenkins",
+    "jen": "daniss jenkins", "jenkins": "daniss jenkins", "dennis jenkins": "daniss jenkins",    "mitchell": "donovan mitchell",
+    "mobley": "evan mobley",
+    "garland": "darius garland",
+    "brunson": "jalen brunson",
+    "randle": "julius randle",
+    "duren": "jalen duren",
+    "fox": "de'aaron fox",
+    "vassell": "devin vassell",
+    "castle": "stephon castle",
+    "naz": "naz reid",
+    "hart": "josh hart",
+    "og": "og anunoby",
+    "dort": "luguentz dort",
+    "strus": "max strus",
+
 }
 
 POPULAR_PLAYERS = [
-    ("nba", "Cade Cunningham"), ("nba", "Tobias Harris"), ("nba", "Daniss Jenkins"), ("nba", "Stephen Curry"),
-    ("nba", "LeBron James"), ("nba", "Nikola Jokic"), ("nba", "Luka Doncic"), ("nba", "Victor Wembanyama"),
-    ("nba", "Jayson Tatum"), ("nba", "Jaylen Brown"), ("nba", "Shai Gilgeous-Alexander"), ("nba", "Anthony Edwards"),
-    ("nba", "Jalen Brunson"), ("nba", "Donovan Mitchell"), ("nba", "Tyrese Haliburton"), ("nba", "Pascal Siakam"),
-    ("nba", "Karl-Anthony Towns"), ("nba", "Jalen Williams"), ("nba", "Chet Holmgren"), ("nba", "Jamal Murray"),
-    ("nba", "Aaron Gordon"), ("nba", "Jimmy Butler"), ("nba", "Bam Adebayo"), ("nba", "Tyrese Maxey"),
-    ("nba", "Joel Embiid"), ("nba", "Giannis Antetokounmpo"), ("nba", "Damian Lillard"), ("nba", "Devin Booker"),
-    ("nba", "Kevin Durant"), ("nba", "Anthony Davis"), ("nba", "Austin Reaves"), ("nba", "Kyrie Irving"),
-    ("nba", "Klay Thompson"),
+    ("nba", "Donovan Mitchell"),
+    ("nba", "Cade Cunningham"),
+    ("nba", "Evan Mobley"),
+    ("nba", "Darius Garland"),
+    ("nba", "Victor Wembanyama"),
+    ("nba", "Anthony Edwards"),
+    ("nba", "Jalen Brunson"),
+    ("nba", "Karl-Anthony Towns"),
+    ("nba", "Shai Gilgeous-Alexander"),
+    ("nba", "Jalen Williams"),
+    ("nba", "Chet Holmgren"),
+    ("nba", "Julius Randle"),
+    ("nba", "Tobias Harris"),
+    ("nba", "Jalen Duren"),
+    ("nba", "De'Aaron Fox"),
+    ("nba", "Jarrett Allen"),
+    ("nba", "Ausar Thompson"),
+    ("nba", "Malik Beasley"),
+    ("nba", "Caris LeVert"),
+    ("nba", "Devin Vassell"),
+    ("nba", "Stephon Castle"),
+    ("nba", "Keldon Johnson"),
+    ("nba", "Jeremy Sochan"),
+    ("nba", "Naz Reid"),
+    ("nba", "Jaden McDaniels"),
+    ("nba", "Donte DiVincenzo"),
+    ("nba", "Josh Hart"),
+    ("nba", "OG Anunoby"),
+    ("nba", "Isaiah Hartenstein"),
+    ("nba", "Alex Caruso"),
+    ("nba", "Mike Conley"),
+    ("nba", "Nickeil Alexander-Walker"),
+    ("nba", "Mikal Bridges"),
+    ("nba", "Miles McBride"),
+    ("nba", "Luguentz Dort"),
+    ("nba", "Cason Wallace"),
+    ("nba", "Aaron Wiggins"),
+    ("nba", "Isaiah Joe"),
+    ("nba", "Isaac Okoro"),
+    ("nba", "Max Strus"),
+    ("nba", "Sam Merrill"),
+    ("nba", "Harrison Barnes"),
+    ("nba", "Rudy Gobert"),
+    ("nba", "Darius Bazley"),
+    ("nba", "Caris LeVert"),
     ("wnba", "Caitlin Clark"), ("wnba", "A'ja Wilson"), ("wnba", "Breanna Stewart"), ("wnba", "Sabrina Ionescu"),
     ("wnba", "Kelsey Plum"), ("wnba", "Arike Ogunbowale"), ("wnba", "Napheesa Collier"), ("wnba", "Aliyah Boston"),
     ("wnba", "Chelsea Gray"), ("wnba", "Jewell Loyd"), ("wnba", "Rhyne Howard"), ("wnba", "Alyssa Thomas"),
@@ -126,7 +176,7 @@ def bdl_get(path, params=None, cache_seconds=0):
     if r.status_code == 429:
         if key in STALE_CACHE:
             return STALE_CACHE[key]
-        raise RuntimeError("BALLDONTLIE rate limit reached. No cached result exists for this search yet.")
+        raise RuntimeError("API is busy. Try a priority chip already cached, or wait briefly and tap again.")
     if r.status_code == 401:
         raise RuntimeError("API key rejected. Check Render environment variable.")
     if r.status_code == 403:
@@ -330,7 +380,7 @@ def ask():
         if not rows:
             raise RuntimeError(f"No {CURRENT_SEASON} stats found for {best['name']}.")
         games, avgs, highs, seqs, hit_cards = summarize(rows, last_n)
-        return jsonify({"ok": True, "brand": "BetBoard", "source": "BALLDONTLIE", "league": best["league"].upper(),
+        return jsonify({"ok": True, "brand": "BetBoard V5.2", "source": "BALLDONTLIE", "league": best["league"].upper(),
                         "season": CURRENT_SEASON, "player": best, "last_n": last_n, "display_names": DISPLAY_NAMES,
                         "table_stats": TABLE_STATS, "main_stats": MAIN_STATS, "games": games, "averages": avgs,
                         "highs": highs, "sequences": seqs, "hit_cards": hit_cards, "last_game": games[0] if games else {},
@@ -338,9 +388,20 @@ def ask():
     except Exception as e:
         return jsonify({"ok": False, "error": str(e), "player_name": player_name}), 500
 
+@app.route("/api/priority")
+def priority():
+    league = request.args.get("league", "nba").lower()
+    if league not in ("nba", "wnba", "all"):
+        league = "nba"
+    players = []
+    for lg, name in POPULAR_PLAYERS:
+        if league == "all" or lg == league:
+            players.append({"league": lg, "name": name, "initials": initials(name), "team_abbr": ""})
+    return jsonify({"ok": True, "players": players[:60]})
+
 @app.route("/api/health")
 def health():
-    return jsonify({"ok": True, "brand": "BetBoard", "has_key": bool(API_KEY),
+    return jsonify({"ok": True, "brand": "BetBoard V5.2", "has_key": bool(API_KEY),
                     "fresh_cache_items": len(FRESH_CACHE), "stale_cache_items": len(STALE_CACHE)})
 
 if __name__ == "__main__":
